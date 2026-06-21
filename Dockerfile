@@ -1,11 +1,11 @@
 FROM joepmeneer/atomic-server:latest
 
 # Install curl (for R2 API calls) and python3 (for seed script)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Base image is Alpine Linux, so we use apk
+RUN apk add --no-cache \
     curl \
     ca-certificates \
-    python3 \
-    && rm -rf /var/lib/apt/lists/*
+    python3
 
 # Create data directory
 RUN mkdir -p /atomic-storage
