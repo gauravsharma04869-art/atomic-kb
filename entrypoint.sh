@@ -98,12 +98,17 @@ atomic-server --initialize --data-dir "$DATA_DIR" 2>&1 || echo "   [INFO] Initia
 echo ""
 echo "-> Seeding data from JSON-AD backup..."
 SEED_FILE="/seed_backup.jsonad"
+SEED_TMP="/tmp/seed_backup.jsonad"
 if [ -f "$SEED_FILE" ]; then
-    # The seed file uses http://localhost:10000 as parent (internal Drive URL).
-    # atomic-server handles URL rewriting via --server-url at runtime.
+    # Replace hardcoded port 10000 with actual listen port so parent URLs match the Drive
+    LOCAL_URL="http://localhost:${LISTEN_PORT}"
+    echo "   Setting parent URLs to: $LOCAL_URL"
+    sed "s|http://localhost:10000|$LOCAL_URL|g" "$SEED_FILE" > "$SEED_TMP"
+
     echo "   Importing seed data into store..."
-    atomic-server import -p "$SEED_FILE" --data-dir "$DATA_DIR" 2>&1
+    atomic-server import -p "$SEED_TMP" --data-dir "$DATA_DIR" 2>&1
     echo "   Seed import completed."
+    rm -f "$SEED_TMP"
 else
     echo "   [WARN] Seed file not found at $SEED_FILE. Skipping."
 fi

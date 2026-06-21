@@ -50,7 +50,7 @@ def extract():
             updated_at = a["updated_at"] or ""
             
             resource = {
-                "@id": f"localId:{atom_id}",
+                "@id": f"{DRIVE_URL}/{atom_id}",
                 P_ISA: [CLASS_DOCUMENT],
                 P_PARENT: DRIVE_URL,
             }
@@ -91,7 +91,7 @@ def extract():
             name = t["name"] or ""
             
             resource = {
-                "@id": f"localId:tag-{tag_id}",
+                "@id": f"{DRIVE_URL}/tag-{tag_id}",
                 P_ISA: [CLASS_TAG],
                 P_PARENT: DRIVE_URL,
             }
