@@ -38,6 +38,13 @@ if [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACCESS_KEY" ]; then
         --exclude "*.db-shm" \
         --exclude "*.db-wal" \
         2>&1 || echo "   [INFO] No existing data in R2. Starting fresh."
+    
+    # Move database to the location atomic-server expects it
+    if [ -f "${DATA_DIR}/default.db" ]; then
+        mkdir -p "${DATA_DIR}/databases"
+        cp "${DATA_DIR}/default.db" "${DATA_DIR}/databases/default.db"
+        echo "   Database restored from R2 backup."
+    fi
 else
     echo "   [INFO] R2 credentials not set. Running without persistence."
 fi
@@ -69,7 +76,7 @@ ATOMIC_PID=$!
 # Wait for it to be ready
 echo "   Waiting for server to be ready..."
 for i in $(seq 1 30); do
-    if curl -sf "http://127.0.0.1:${LISTEN_PORT}/api/health" > /dev/null 2>&1; then
+    if curl -sf "http://127.0.0.1:${LISTEN_PORT}/health" > /dev/null 2>&1; then
         echo "   Server is ready! (PID: $ATOMIC_PID)"
         break
     fi
@@ -78,6 +85,16 @@ for i in $(seq 1 30); do
     fi
     sleep 1
 done
+
+# --- Seed from R2 backup if atoms are missing ---
+echo ""
+echo "-> Running seed from backup..."
+BACKUP_PATH="${DATA_DIR}/atomic_backup.json"
+if [ -f "$BACKUP_PATH" ]; then
+    python3 /seed_from_backup.py || echo "   [INFO] Seed completed or skipped."
+else
+    echo "   [INFO] No backup found at $BACKUP_PATH. Skipping seed."
+fi
 
 # --- Background sync loop ---
 if [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACCESS_KEY" ]; then
