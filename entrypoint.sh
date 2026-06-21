@@ -71,7 +71,7 @@ r2_upload() {
 
 # --- Restore sled store from R2 ---
 echo ""
-echo "-> Restoring store from R2..."
+echo "-> Restoring store from R2 (or starting fresh)..."
 
 STORE_DIR="${DATA_DIR}/store"
 mkdir -p "$STORE_DIR"
