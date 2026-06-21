@@ -70,20 +70,28 @@ echo ""
 echo "-> Restoring from R2..."
 
 if [ -n "$CF_API_TOKEN" ] && [ -n "$R2_ACCOUNT_ID" ]; then
-    mkdir -p "${DATA_DIR}/databases"
     
-    # Download the database file
-    if r2_download "default.db" "${DATA_DIR}/databases/default.db"; then
-        echo "   Database restored from R2 backup ($(du -h "${DATA_DIR}/databases/default.db" | cut -f1))."
+    # Download the main store — new atomic-server expects SQLite at "${DATA_DIR}/store"
+    if r2_download "default.db" "${DATA_DIR}/store"; then
+        echo "   Database restored from R2 backup ($(du -h "${DATA_DIR}/store" | cut -f1))."
     else
         echo "   [INFO] No existing database in R2. Starting fresh."
+    fi
+    
+    # Also restore registry (settings, tokens) if available
+    if r2_download "registry.db" "${DATA_DIR}/registry.db"; then
+        echo "   Registry restored from R2 backup ($(du -h "${DATA_DIR}/registry.db" | cut -f1))."
+    else
+        echo "   [INFO] No registry in R2. Starting fresh config."
     fi
 else
     echo "   [INFO] Cloudflare API token not set. Running without persistence."
 fi
 
 # --- Build command flags ---
-FLAGS="--data-dir $DATA_DIR --port $LISTEN_PORT --ip 0.0.0.0 --public-mode"
+# Public URL — Render URL is stable; Cloudflare Worker is the user-facing domain
+PUBLIC_URL="${PUBLIC_URL:-https://atomic-kb.onrender.com}"
+FLAGS="--data-dir $DATA_DIR --port $LISTEN_PORT --ip 0.0.0.0 --public-mode --server-url $PUBLIC_URL --dangerously-skip-setup-token"
 
 # Add any extra flags passed as arguments
 if [ $# -gt 0 ]; then
@@ -112,7 +120,7 @@ done
 
 # --- Background sync loop (every 5 minutes) ---
 if [ -n "$CF_API_TOKEN" ] && [ -n "$R2_ACCOUNT_ID" ]; then
-    DB_PATH="${DATA_DIR}/databases/default.db"
+    DB_PATH="${DATA_DIR}/store"
     echo ""
     echo "-> Starting background sync to R2 (every 5 minutes)..."
     (
