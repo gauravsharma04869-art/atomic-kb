@@ -14,7 +14,10 @@ RUN mkdir -p /atomic-storage
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Copy seed script
+# Copy seed backup (JSON-AD for atomic-server import)
+COPY seed_backup.jsonad /seed_backup.jsonad
+
+# Copy seed script (deprecated, kept for reference)
 COPY seed_from_backup.py /seed_from_backup.py
 
 # Health check

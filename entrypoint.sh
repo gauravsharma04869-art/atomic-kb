@@ -3,9 +3,9 @@ set -e
 
 # ============================================================
 #  atomic-server Cloud Deploy — Render + Cloudflare R2
-#  Uses Cloudflare API (cfat token) for R2 access — no S3 keys needed.
-#  Syncs data on startup and every 5 minutes to survive
-#  Render's ephemeral filesystem.
+#  Uses Cloudflare API (cfat token) for R2 access — no S3 keys.
+#  Seeds from JSON-AD backup on start, syncs sled store to
+#  R2 every 5 minutes to survive ephemeral filesystem.
 # ============================================================
 
 # --- Configuration ---
@@ -18,11 +18,15 @@ R2_API_BASE="https://api.cloudflare.com/client/v4/accounts/${R2_ACCOUNT_ID}/r2/b
 # Render injects PORT; fallback to ATOMIC_PORT if not set
 LISTEN_PORT="${PORT:-${ATOMIC_PORT:-9883}}"
 
+# Public URL — Render URL is stable; Cloudflare Worker is the user-facing domain
+PUBLIC_URL="${PUBLIC_URL:-https://atomic-kb.onrender.com}"
+
 echo "==================================="
 echo "  Atomic-Server Cloud Deploy"
 echo "==================================="
 echo "Data directory: $DATA_DIR"
 echo "Listen port:    $LISTEN_PORT"
+echo "Public URL:     $PUBLIC_URL"
 echo "R2 bucket:      $R2_BUCKET"
 echo "==================================="
 
@@ -65,32 +69,49 @@ r2_upload() {
     [ "$http_code" = "200" ]
 }
 
-# --- Restore data from R2 ---
+# --- Restore sled store from R2 ---
 echo ""
-echo "-> Restoring from R2..."
+echo "-> Restoring store from R2..."
+
+STORE_DIR="${DATA_DIR}/store"
+mkdir -p "$STORE_DIR"
 
 if [ -n "$CF_API_TOKEN" ] && [ -n "$R2_ACCOUNT_ID" ]; then
-    
-    # Download the main store — new atomic-server expects SQLite at "${DATA_DIR}/store"
-    if r2_download "default.db" "${DATA_DIR}/store"; then
-        echo "   Database restored from R2 backup ($(du -h "${DATA_DIR}/store" | cut -f1))."
+    if r2_download "store_snapshot.tar.gz" "/tmp/store_snapshot.tar.gz"; then
+        echo "   Store snapshot downloaded. Extracting..."
+        tar -xzf "/tmp/store_snapshot.tar.gz" -C "$DATA_DIR"
+        rm -f "/tmp/store_snapshot.tar.gz"
+        echo "   Store restored from R2 snapshot ($(du -sh "$STORE_DIR" | cut -f1))."
     else
-        echo "   [INFO] No existing database in R2. Starting fresh."
-    fi
-    
-    # Also restore registry (settings, tokens) if available
-    if r2_download "registry.db" "${DATA_DIR}/registry.db"; then
-        echo "   Registry restored from R2 backup ($(du -h "${DATA_DIR}/registry.db" | cut -f1))."
-    else
-        echo "   [INFO] No registry in R2. Starting fresh config."
+        echo "   [INFO] No existing snapshot in R2. Starting fresh store."
     fi
 else
     echo "   [INFO] Cloudflare API token not set. Running without persistence."
 fi
 
+# --- Seed from JSON-AD backup ---
+echo ""
+echo "-> Seeding data from JSON-AD backup..."
+SEED_FILE="/seed_backup.jsonad"
+if [ -f "$SEED_FILE" ]; then
+    # Replace old parent URL (localhost:10000) with actual server URL
+    echo "   Replacing parent URLs with: $PUBLIC_URL"
+    sed "s|http://localhost:10000|$PUBLIC_URL|g" "$SEED_FILE" > "/tmp/seed_backup.jsonad"
+
+    echo "   Importing seed data into store..."
+    atomic-server import -p "/tmp/seed_backup.jsonad" --data-dir "$DATA_DIR" 2>&1
+    echo "   Seed import completed."
+    rm -f "/tmp/seed_backup.jsonad"
+else
+    echo "   [WARN] Seed file not found at $SEED_FILE. Skipping."
+fi
+
+# --- Ensure setup invite is available ---
+echo ""
+echo "-> Initializing setup invite..."
+atomic-server --initialize --data-dir "$DATA_DIR" 2>&1 || echo "   [INFO] Initialize skipped (already configured)."
+
 # --- Build command flags ---
-# Public URL — Render URL is stable; Cloudflare Worker is the user-facing domain
-PUBLIC_URL="${PUBLIC_URL:-https://atomic-kb.onrender.com}"
 FLAGS="--data-dir $DATA_DIR --port $LISTEN_PORT --ip 0.0.0.0 --public-mode --server-url $PUBLIC_URL"
 
 # Add any extra flags passed as arguments
@@ -120,18 +141,20 @@ done
 
 # --- Background sync loop (every 5 minutes) ---
 if [ -n "$CF_API_TOKEN" ] && [ -n "$R2_ACCOUNT_ID" ]; then
-    DB_PATH="${DATA_DIR}/store"
     echo ""
     echo "-> Starting background sync to R2 (every 5 minutes)..."
     (
     while true; do
         sleep 300
-        if [ -f "$DB_PATH" ]; then
-            if r2_upload "default.db" "$DB_PATH"; then
-                echo "   [sync] Database synced to R2 ($(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
+        if [ -d "$STORE_DIR" ] && [ -n "$(ls -A "$STORE_DIR" 2>/dev/null)" ]; then
+            SNAPSHOT="/tmp/store_snapshot.tar.gz"
+            tar -czf "$SNAPSHOT" -C "$DATA_DIR" "store"
+            if r2_upload "store_snapshot.tar.gz" "$SNAPSHOT"; then
+                echo "   [sync] Store synced to R2 ($(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
             else
                 echo "   [sync] Upload failed"
             fi
+            rm -f "$SNAPSHOT"
         fi
     done
     ) &
