@@ -83,16 +83,7 @@ else
 fi
 
 # --- Build command flags ---
-FLAGS="--data-dir $DATA_DIR --port $LISTEN_PORT --ip 0.0.0.0"
-
-if [ -n "$ATOMIC_AUTH_TOKEN" ]; then
-    FLAGS="$FLAGS --auth-token $ATOMIC_AUTH_TOKEN"
-    echo "   Auth token configured"
-fi
-
-if [ "$ATOMIC_PUBLIC_MODE" = "true" ]; then
-    FLAGS="$FLAGS --public-mode"
-fi
+FLAGS="--data-dir $DATA_DIR --port $LISTEN_PORT --ip 0.0.0.0 --public-mode"
 
 # Add any extra flags passed as arguments
 if [ $# -gt 0 ]; then
