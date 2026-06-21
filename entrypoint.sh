@@ -91,7 +91,7 @@ fi
 # --- Build command flags ---
 # Public URL — Render URL is stable; Cloudflare Worker is the user-facing domain
 PUBLIC_URL="${PUBLIC_URL:-https://atomic-kb.onrender.com}"
-FLAGS="--data-dir $DATA_DIR --port $LISTEN_PORT --ip 0.0.0.0 --public-mode --server-url $PUBLIC_URL --dangerously-skip-setup-token"
+FLAGS="--data-dir $DATA_DIR --port $LISTEN_PORT --ip 0.0.0.0 --public-mode --server-url $PUBLIC_URL"
 
 # Add any extra flags passed as arguments
 if [ $# -gt 0 ]; then
