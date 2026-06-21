@@ -1,0 +1,6 @@
+# Large one-time exports (can be regenerated from default.db)
+old_db_export.json
+
+# Python cache
+__pycache__/
+*.pyc
