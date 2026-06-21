@@ -3,6 +3,7 @@ set -e
 
 # ============================================================
 #  atomic-server Cloud Deploy — Render + Cloudflare R2
+#  Uses Cloudflare API (cfat token) for R2 access — no S3 keys needed.
 #  Syncs data on startup and every 5 minutes to survive
 #  Render's ephemeral filesystem.
 # ============================================================
@@ -10,7 +11,9 @@ set -e
 # --- Configuration ---
 DATA_DIR="${ATOMIC_DATA_DIR:-/atomic-storage}"
 R2_BUCKET="${R2_BUCKET:-atomic-kb-data}"
-R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+R2_ACCOUNT_ID="${R2_ACCOUNT_ID}"
+CF_API_TOKEN="${CF_API_TOKEN}"
+R2_API_BASE="https://api.cloudflare.com/client/v4/accounts/${R2_ACCOUNT_ID}/r2/buckets/${R2_BUCKET}/objects"
 
 # Render injects PORT; fallback to ATOMIC_PORT if not set
 LISTEN_PORT="${PORT:-${ATOMIC_PORT:-9883}}"
@@ -23,30 +26,60 @@ echo "Listen port:    $LISTEN_PORT"
 echo "R2 bucket:      $R2_BUCKET"
 echo "==================================="
 
-# --- Configure AWS CLI for R2 ---
-aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID" 2>/dev/null
-aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY" 2>/dev/null
+# --- Helper: download from R2 via CF API ---
+r2_download() {
+    local object="$1"
+    local output="$2"
+    if [ -z "$CF_API_TOKEN" ] || [ -z "$R2_ACCOUNT_ID" ]; then
+        return 1
+    fi
+    local url="${R2_API_BASE}/${object}"
+    http_code=$(curl -s -o "$output" -w "%{http_code}" \
+        -H "Authorization: Bearer $CF_API_TOKEN" \
+        "$url")
+    if [ "$http_code" = "200" ]; then
+        return 0
+    else
+        rm -f "$output"
+        return 1
+    fi
+}
+
+# --- Helper: upload to R2 via CF API ---
+r2_upload() {
+    local object="$1"
+    local file="$2"
+    if [ -z "$CF_API_TOKEN" ] || [ -z "$R2_ACCOUNT_ID" ]; then
+        return 1
+    fi
+    if [ ! -f "$file" ]; then
+        return 1
+    fi
+    local url="${R2_API_BASE}/${object}"
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X PUT \
+        -H "Authorization: Bearer $CF_API_TOKEN" \
+        -H "Content-Type: application/octet-stream" \
+        --data-binary "@$file" \
+        "$url")
+    [ "$http_code" = "200" ]
+}
 
 # --- Restore data from R2 ---
 echo ""
 echo "-> Restoring from R2..."
-mkdir -p "${DATA_DIR}/databases"
 
-if [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACCESS_KEY" ]; then
-    aws s3 sync "s3://${R2_BUCKET}/data/" "${DATA_DIR}/" \
-        --endpoint-url "$R2_ENDPOINT" \
-        --exclude "*.db-shm" \
-        --exclude "*.db-wal" \
-        2>&1 || echo "   [INFO] No existing data in R2. Starting fresh."
+if [ -n "$CF_API_TOKEN" ] && [ -n "$R2_ACCOUNT_ID" ]; then
+    mkdir -p "${DATA_DIR}/databases"
     
-    # Move database to the location atomic-server expects it
-    if [ -f "${DATA_DIR}/default.db" ]; then
-        mkdir -p "${DATA_DIR}/databases"
-        cp "${DATA_DIR}/default.db" "${DATA_DIR}/databases/default.db"
-        echo "   Database restored from R2 backup."
+    # Download the database file
+    if r2_download "default.db" "${DATA_DIR}/databases/default.db"; then
+        echo "   Database restored from R2 backup ($(du -h "${DATA_DIR}/databases/default.db" | cut -f1))."
+    else
+        echo "   [INFO] No existing database in R2. Starting fresh."
     fi
 else
-    echo "   [INFO] R2 credentials not set. Running without persistence."
+    echo "   [INFO] Cloudflare API token not set. Running without persistence."
 fi
 
 # --- Build command flags ---
@@ -86,29 +119,20 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-# --- Seed from R2 backup if atoms are missing ---
-echo ""
-echo "-> Running seed from backup..."
-BACKUP_PATH="${DATA_DIR}/atomic_backup.json"
-if [ -f "$BACKUP_PATH" ]; then
-    python3 /seed_from_backup.py || echo "   [INFO] Seed completed or skipped."
-else
-    echo "   [INFO] No backup found at $BACKUP_PATH. Skipping seed."
-fi
-
-# --- Background sync loop ---
-if [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACCESS_KEY" ]; then
+# --- Background sync loop (every 5 minutes) ---
+if [ -n "$CF_API_TOKEN" ] && [ -n "$R2_ACCOUNT_ID" ]; then
+    DB_PATH="${DATA_DIR}/databases/default.db"
     echo ""
     echo "-> Starting background sync to R2 (every 5 minutes)..."
     (
     while true; do
         sleep 300
-        if [ -d "${DATA_DIR}" ]; then
-            aws s3 sync "${DATA_DIR}/" "s3://${R2_BUCKET}/data/" \
-                --endpoint-url "$R2_ENDPOINT" \
-                --exclude "*.db-shm" \
-                --exclude "*.db-wal" \
-                2>&1 | grep -v "upload:" || echo "   [sync] Nothing new to upload"
+        if [ -f "$DB_PATH" ]; then
+            if r2_upload "default.db" "$DB_PATH"; then
+                echo "   [sync] Database synced to R2 ($(date -u +"%Y-%m-%dT%H:%M:%SZ"))"
+            else
+                echo "   [sync] Upload failed"
+            fi
         fi
     done
     ) &

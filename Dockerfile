@@ -1,9 +1,10 @@
 FROM joepmeneer/atomic-server:latest
 
-# Install AWS CLI for R2 S3-compatible sync
+# Install curl (for R2 API calls) and python3 (for seed script)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    awscli \
+    curl \
     ca-certificates \
+    python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create data directory
@@ -15,9 +16,6 @@ RUN chmod +x /entrypoint.sh
 
 # Copy seed script
 COPY seed_from_backup.py /seed_from_backup.py
-
-# Install Python for seed script
-RUN apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

@@ -21,42 +21,50 @@ User → atomic.patternparadigm.xyz → Render.com (Docker)
 - Every 5 minutes, changed files sync to **Cloudflare R2** (persistent)
 - On cold start, data restores from R2
 
+## Prerequisites
+
+Before deploying, you need:
+
+1. **Cloudflare API Token** with R2 read+write permissions (already created — cfat token)
+2. **R2 bucket** named `atomic-kb-data` (already created)
+3. **GitHub repo** connected (already pushed)
+
 ## Deploy
 
-### 1. One-click Deploy
+### 1. On Render.com
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+1. Go to [render.com](https://render.com) → New Web Service
+2. Connect your GitHub repo: `gauravsharma04869-art/atomic-kb`
+3. Runtime: **Docker**
+4. Set these environment variables:
 
-### 2. Or manual deploy
+| Variable | Value | Notes |
+|----------|-------|-------|
+| `CF_API_TOKEN` | *(your Cloudflare API token)* | Cloudflare API token with R2 + DNS access (use the cfat token) |
+| `R2_ACCOUNT_ID` | `913238a744268b900bf09b52dfcc296b` | Cloudflare account ID |
+| `R2_BUCKET` | `atomic-kb-data` | R2 bucket name |
+| `ATOMIC_AUTH_TOKEN` | `at_OnuxZDBUmE1OuIoljiws8JE2n9zijboPPzvZVnFgmdo` | Atomic-server auth token |
+| `ATOMIC_PUBLIC_MODE` | `true` | Allow public read access |
 
-1. Fork this repo
-2. Create an R2 bucket: `atomic-kb-data`
-3. Generate R2 API credentials (Access Key + Secret Key)
-4. On Render.com:
-   - New Web Service → Connect your repo
-   - Runtime: Docker
-   - Set env vars:
-     - `R2_ACCESS_KEY_ID`
-     - `R2_SECRET_ACCESS_KEY`
-     - `R2_ACCOUNT_ID`
-     - `R2_BUCKET` (default: `atomic-kb-data`)
-     - `ATOMIC_AUTH_TOKEN` (your auth token)
-     - `ATOMIC_PUBLIC_MODE` (set to `true` for public read)
 5. Deploy!
 
-### 3. Set DNS
+### 2. Update DNS
 
-Point `atomic.patternparadigm.xyz` CNAME to your Render service URL.
+Once Render gives you a URL (e.g., `atomic-kb.onrender.com`), update the DNS:
+
+```bash
+# I'll do this step — update the CNAME from tunnel to Render URL
+```
 
 ## Local Development
 
 ```bash
 docker build -t atomic-cloud .
 docker run -p 9883:9883 \
-  -e R2_ACCESS_KEY_ID=your_key \
-  -e R2_SECRET_ACCESS_KEY=your_secret \
+  -e CF_API_TOKEN=your_token \
   -e R2_ACCOUNT_ID=your_account_id \
   -e R2_BUCKET=atomic-kb-data \
+  -e ATOMIC_PUBLIC_MODE=true \
   atomic-cloud
 ```
 
