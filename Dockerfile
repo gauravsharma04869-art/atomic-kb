@@ -1,11 +1,13 @@
 FROM joepmeneer/atomic-server:latest
 
-# Install curl (for R2 API calls) and python3 (for seed script)
+# Install curl (for R2 API calls), python3, and cryptography (for seed script)
 # Base image is Alpine Linux, so we use apk
 RUN apk add --no-cache \
     curl \
     ca-certificates \
-    python3
+    python3 \
+    py3-cryptography \
+    openssl
 
 # Create data directory
 RUN mkdir -p /atomic-storage
@@ -17,8 +19,8 @@ RUN chmod +x /entrypoint.sh
 # Copy seed backup (JSON-AD for atomic-server import)
 COPY seed_backup.jsonad /seed_backup.jsonad
 
-# Copy seed script (deprecated, kept for reference)
-COPY seed_from_backup.py /seed_from_backup.py
+# Copy seed script (HTTP API-based, generates agent + posts data)
+COPY seed_via_api.py /seed_via_api.py
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

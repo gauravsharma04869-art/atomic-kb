@@ -96,20 +96,14 @@ atomic-server --initialize --data-dir "$DATA_DIR" --server-url "$PUBLIC_URL" 2>&
 
 # --- Seed from JSON-AD backup ---
 echo ""
-echo "-> Seeding data from JSON-AD backup..."
-SEED_FILE="/seed_backup.jsonad"
-SEED_TMP="/tmp/seed_backup.jsonad"
-if [ -f "$SEED_FILE" ]; then
-    # Replace hardcoded localhost:10000 with the public URL so parent/child URLs match the Drive
-    echo "   Setting seed base URLs to: $PUBLIC_URL"
-    sed "s|http://localhost:10000|$PUBLIC_URL|g" "$SEED_FILE" > "$SEED_TMP"
-
-    echo "   Importing seed data into store..."
-    atomic-server import --file "$SEED_TMP" --data-dir "$DATA_DIR" --server-url "$PUBLIC_URL" 2>&1
-    echo "   Seed import completed."
-    rm -f "$SEED_TMP"
+echo "-> Seeding data from JSON-AD backup (via API after server start)..."
+SEED_SCRIPT="/seed_via_api.py"
+if [ -f "$SEED_SCRIPT" ] && [ -f "/seed_backup.jsonad" ]; then
+    echo "   Seed script found, will run after server starts."
+    RUN_SEED_AFTER_START=1
 else
-    echo "   [WARN] Seed file not found at $SEED_FILE. Skipping."
+    echo "   [WARN] Seed script or backup not found. Skipping."
+    RUN_SEED_AFTER_START=0
 fi
 
 # --- Build command flags ---
@@ -130,7 +124,7 @@ ATOMIC_PID=$!
 # Wait for it to be ready
 echo "   Waiting for server to be ready..."
 for i in $(seq 1 30); do
-    if curl -sf "http://127.0.0.1:${LISTEN_PORT}/health" > /dev/null 2>&1; then
+    if curl -sf "http://127.0.0.1:${LISTEN_PORT}" > /dev/null 2>&1; then
         echo "   Server is ready! (PID: $ATOMIC_PID)"
         break
     fi
@@ -139,6 +133,18 @@ for i in $(seq 1 30); do
     fi
     sleep 1
 done
+
+# --- Seed data via API ---
+if [ "$RUN_SEED_AFTER_START" = "1" ]; then
+    echo ""
+    echo "-> Seeding data via API..."
+    if command -v python3 > /dev/null 2>&1; then
+        python3 "$SEED_SCRIPT" "http://127.0.0.1:${LISTEN_PORT}" 2>&1
+        echo "   Seed script finished."
+    else
+        echo "   [WARN] python3 not available, skipping seed."
+    fi
+fi
 
 # --- Background sync loop (every 5 minutes) ---
 if [ -n "$CF_API_TOKEN" ] && [ -n "$R2_ACCOUNT_ID" ]; then
