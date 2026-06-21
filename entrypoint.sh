@@ -92,7 +92,7 @@ fi
 # --- Ensure store has a Drive and setup invite ---
 echo ""
 echo "-> Initializing store (creates Drive + setup invite if needed)..."
-atomic-server --initialize --data-dir "$DATA_DIR" 2>&1 || echo "   [INFO] Initialize skipped (already configured)."
+atomic-server --initialize --data-dir "$DATA_DIR" --server-url "$PUBLIC_URL" 2>&1 || echo "   [INFO] Initialize skipped (already configured)."
 
 # --- Seed from JSON-AD backup ---
 echo ""
@@ -100,13 +100,12 @@ echo "-> Seeding data from JSON-AD backup..."
 SEED_FILE="/seed_backup.jsonad"
 SEED_TMP="/tmp/seed_backup.jsonad"
 if [ -f "$SEED_FILE" ]; then
-    # Replace hardcoded port 10000 with actual listen port so parent URLs match the Drive
-    LOCAL_URL="http://localhost:${LISTEN_PORT}"
-    echo "   Setting parent URLs to: $LOCAL_URL"
-    sed "s|http://localhost:10000|$LOCAL_URL|g" "$SEED_FILE" > "$SEED_TMP"
+    # Replace hardcoded localhost:10000 with the public URL so parent/child URLs match the Drive
+    echo "   Setting seed base URLs to: $PUBLIC_URL"
+    sed "s|http://localhost:10000|$PUBLIC_URL|g" "$SEED_FILE" > "$SEED_TMP"
 
     echo "   Importing seed data into store..."
-    atomic-server import -p "$SEED_TMP" --data-dir "$DATA_DIR" 2>&1
+    atomic-server import -p "$SEED_TMP" --data-dir "$DATA_DIR" --server-url "$PUBLIC_URL" 2>&1
     echo "   Seed import completed."
     rm -f "$SEED_TMP"
 else
