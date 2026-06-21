@@ -105,7 +105,7 @@ if [ -f "$SEED_FILE" ]; then
     sed "s|http://localhost:10000|$PUBLIC_URL|g" "$SEED_FILE" > "$SEED_TMP"
 
     echo "   Importing seed data into store..."
-    atomic-server import -p "$SEED_TMP" --data-dir "$DATA_DIR" --server-url "$PUBLIC_URL" 2>&1
+    atomic-server import --file "$SEED_TMP" --data-dir "$DATA_DIR" --server-url "$PUBLIC_URL" 2>&1
     echo "   Seed import completed."
     rm -f "$SEED_TMP"
 else
