@@ -89,27 +89,24 @@ else
     echo "   [INFO] Cloudflare API token not set. Running without persistence."
 fi
 
+# --- Ensure store has a Drive and setup invite ---
+echo ""
+echo "-> Initializing store (creates Drive + setup invite if needed)..."
+atomic-server --initialize --data-dir "$DATA_DIR" 2>&1 || echo "   [INFO] Initialize skipped (already configured)."
+
 # --- Seed from JSON-AD backup ---
 echo ""
 echo "-> Seeding data from JSON-AD backup..."
 SEED_FILE="/seed_backup.jsonad"
 if [ -f "$SEED_FILE" ]; then
-    # Replace old parent URL (localhost:10000) with actual server URL
-    echo "   Replacing parent URLs with: $PUBLIC_URL"
-    sed "s|http://localhost:10000|$PUBLIC_URL|g" "$SEED_FILE" > "/tmp/seed_backup.jsonad"
-
+    # The seed file uses http://localhost:10000 as parent (internal Drive URL).
+    # atomic-server handles URL rewriting via --server-url at runtime.
     echo "   Importing seed data into store..."
-    atomic-server import -p "/tmp/seed_backup.jsonad" --data-dir "$DATA_DIR" 2>&1
+    atomic-server import -p "$SEED_FILE" --data-dir "$DATA_DIR" 2>&1
     echo "   Seed import completed."
-    rm -f "/tmp/seed_backup.jsonad"
 else
     echo "   [WARN] Seed file not found at $SEED_FILE. Skipping."
 fi
-
-# --- Ensure setup invite is available ---
-echo ""
-echo "-> Initializing setup invite..."
-atomic-server --initialize --data-dir "$DATA_DIR" 2>&1 || echo "   [INFO] Initialize skipped (already configured)."
 
 # --- Build command flags ---
 FLAGS="--data-dir $DATA_DIR --port $LISTEN_PORT --ip 0.0.0.0 --public-mode --server-url $PUBLIC_URL"
